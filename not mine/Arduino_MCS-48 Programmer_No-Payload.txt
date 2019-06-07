@@ -1,0 +1,322 @@
+/*
+ * Program to load a payload into a MCS-48 Microcontroller with an Arduino Nano
+ */
+
+#include <avr/io.h>
+
+uint8_t payload[1024] =
+{
+    // Put your Payload (8bit HEX-Values separated by a ",") here and adjust the size of the array and the for-loops in the program-routine accordingly
+ 
+} ;
+
+int VDD = A0;
+int PROG = A1;
+int TEST0 = A2;
+int RESET = A3;
+int EA = A4;
+int BUTTON = A5;
+int LED = 13;
+
+uint8_t LOWBYTE = 0;
+uint8_t HIGHBYTE = 0;
+
+
+void setup() {
+  // Setup the Control-Pins
+  Serial.begin(9600);
+  pinMode(LED, OUTPUT);
+  digitalWrite(LED, LOW);
+  pinMode(VDD, OUTPUT);
+  pinMode(PROG, OUTPUT);
+  pinMode(TEST0, OUTPUT);
+  pinMode(RESET, OUTPUT);
+  pinMode(EA, OUTPUT);
+  pinMode(BUTTON, INPUT_PULLUP);
+  // Setup the Address-/Data-Pins to INPUT, to keep them floating for now
+  DDRD = DDRD | B00000000;
+  DDRB = B00000000;
+  // Set the control-Pins according to MCS-48 recommendation
+  digitalWrite(VDD, LOW); // Set VDD to +5V
+  digitalWrite(PROG, LOW); // Set PROG to +5V
+  digitalWrite(TEST0, HIGH); // Set TEST0 to +5V
+  digitalWrite(EA, LOW); // Set EA to +5V
+  digitalWrite(RESET, LOW); // Set RESET to 0V
+  digitalWrite(LED, HIGH);
+  delay(3000);
+  digitalWrite(LED, LOW);
+  delay(1000);
+  Serial.println("MCS-48 Programmer READY");
+    Serial.println("Programming Chip in 5 seconds");
+  delay(5000);
+//  program();
+  Serial.println("Reading Chip in 5 seconds");
+  delay(5000);
+  readchip();
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+  if(digitalRead(BUTTON) == LOW){
+    Serial.println("Reading Chip in 5 Seconds");
+    delay(5000);
+    program();
+  }
+  else{
+    digitalWrite(LED, HIGH);
+    delay(100);
+    digitalWrite(LED, LOW);
+    delay(100);
+  }
+
+}
+
+void program() {
+  digitalWrite(TEST0, LOW);
+  digitalWrite(EA, HIGH); // apply +18V to EA to activate Programming-Mode
+  for(int i = 0; i < 1024; i++){
+    // Setup the pins as outputs
+    pinMode(2, OUTPUT);
+    pinMode(3, OUTPUT);
+    pinMode(4, OUTPUT);
+    pinMode(5, OUTPUT);
+    pinMode(6, OUTPUT);
+    pinMode(7, OUTPUT);
+    pinMode(8, OUTPUT);
+    pinMode(9, OUTPUT);
+    pinMode(10, OUTPUT);
+    pinMode(11, OUTPUT);
+    pinMode(12, OUTPUT);
+    pinMode(13, OUTPUT);
+    pinMode(A0, OUTPUT);
+    pinMode(A1, OUTPUT);
+    pinMode(A2, OUTPUT);
+    pinMode(A3, OUTPUT);
+    Serial.print("Programming Address ");
+    Serial.print(i, HEX);
+    int ADDRESS = i << 2;           // Set the current Address and Left-Shift it 2 bits to the left to account for the left-shift of the connections 
+    HIGHBYTE = highByte(ADDRESS);
+    Serial.print(" HIGHBYTE = ");
+    Serial.print(HIGHBYTE, HEX);
+    LOWBYTE = lowByte(ADDRESS);
+    Serial.print(" LOWBYTE = ");
+    Serial.print(LOWBYTE, HEX);
+    PORTB = HIGHBYTE;
+    PORTD = PORTD & B00000011;
+    PORTD = PORTD | LOWBYTE;
+    delay(10);                         // Wait 10ms to have stable lines
+    digitalWrite(RESET, HIGH);        // Latch the Address into the MCS-48 µC
+    delay(10);                         // Give the µC some time to latch the Address
+    int VERIFYadr = (PINB << 2) | PIND;
+    Serial.print(" VERIFAddress = ");
+    Serial.print(VERIFYadr, HEX);
+    Serial.print("   With Data ");
+    Serial.print(payload[i], HEX);
+    int DATA = payload[i] << 2;       // Load the current Payload-Byte
+    HIGHBYTE = highByte(DATA);        
+    Serial.print(" HIGHBYTE = ");
+    Serial.print(HIGHBYTE, HEX);
+    LOWBYTE = lowByte(DATA);
+    Serial.print(" LOWBYTE = ");
+    Serial.print(LOWBYTE, HEX);
+    pinMode(10, INPUT);
+    pinMode(11, INPUT);
+    pinMode(12, INPUT);
+    PORTB = B00000000;
+    PORTB = PORTB | HIGHBYTE;
+    PORTD = PORTD & B00000011;
+    PORTD = PORTD | LOWBYTE; 
+    int VERIFYWrite = (PINB << 2) | PIND;
+    Serial.print(" VERIFYWrite = ");
+    Serial.print(VERIFYWrite, HEX);
+    delay(10);
+    digitalWrite(VDD, HIGH);
+    delay(1);
+    digitalWrite(PROG, HIGH);
+    delay(57);
+    digitalWrite(PROG, LOW);
+    delay(1);
+    digitalWrite(VDD, LOW);
+    delay(10);
+    PORTB = B00000000;
+    PORTD = PORTD & B00000011;
+    pinMode(2, INPUT_PULLUP);
+    pinMode(3, INPUT_PULLUP);
+    pinMode(4, INPUT_PULLUP);
+    pinMode(5, INPUT_PULLUP);
+    pinMode(6, INPUT_PULLUP);
+    pinMode(7, INPUT_PULLUP);
+    pinMode(8, INPUT_PULLUP);
+    pinMode(9, INPUT_PULLUP);
+//    pinMode(10, INPUT_PULLUP);
+//    pinMode(11, INPUT_PULLUP);
+//    pinMode(12, INPUT_PULLUP);
+//    PORTB = B000000;
+//    PORTD = PORTD & B00000011;
+//    DDRB = B000000;
+//    DDRD = DDRD | B00000000;
+    digitalWrite(TEST0, HIGH);
+    delay(25);
+    byte VERIFYL = PIND >> 2;
+    Serial.print(" LOWBYTE: ");
+    Serial.print(VERIFYL, HEX);
+    byte VERIFYH = PINB;
+    Serial.print(" HIGHBYTE: ");
+    Serial.print(VERIFYH, HEX);
+    byte VERIFY = (PINB << 2) | PIND;
+    Serial.print(" VERIFY: ");
+    Serial.print(VERIFY, HEX);
+    if (VERIFYL == LOWBYTE >> 2 && VERIFYH == HIGHBYTE){
+      Serial.println(" OK");
+      digitalWrite(LED, HIGH);
+    }
+    else{
+      Serial.println(" ERROR");
+      // error();
+        }
+   digitalWrite(TEST0, LOW);
+   digitalWrite(RESET, LOW);
+   digitalWrite(EA, LOW);
+  }
+}
+
+void error(){
+  Serial.println("ABORT WITH ERROR!");
+  digitalWrite(EA, LOW);
+  digitalWrite(TEST0, LOW);
+  digitalWrite(RESET, LOW);
+    while(true){
+    digitalWrite(LED, HIGH);
+  }
+}
+
+void done(){
+  Serial.println("Programming DONE");
+  digitalWrite(EA, LOW);
+  digitalWrite(TEST0, LOW);
+  digitalWrite(RESET, LOW);
+    while(true){
+    digitalWrite(LED, LOW);
+  }
+}
+
+//void test(){ 
+//  Serial.println("pulsing VDD");
+//  delay(3500);
+//  for(int i = 0; i < 100; i++){
+//    digitalWrite(VDD, HIGH);
+//    delay(5);
+//    digitalWrite(VDD, LOW);
+//    delay(15);
+//  }
+//  Serial.println("pulsing PROG");
+//  delay(3500);
+//  for(int i = 0; i < 100; i++){
+//    digitalWrite(PROG, HIGH);
+//    delay(5);
+//    digitalWrite(PROG, LOW);
+//    delay(15);
+//  }
+//  Serial.println("pulsing TEST0");
+//  delay(3500);
+//  for(int i = 0; i < 100; i++){
+//    digitalWrite(TEST0, HIGH);
+//    delay(5);
+//    digitalWrite(TEST0, LOW);
+//    delay(15);
+//  }
+// Serial.println("pulsing RESET");
+// delay(3500);
+// 
+//   for(int i = 0; i < 100; i++){
+//    digitalWrite(RESET, HIGH);
+//    delay(5);
+//    digitalWrite(RESET, LOW);
+//    delay(15);
+//  }
+//}
+
+void readchip() {
+  digitalWrite(TEST0, LOW);
+  digitalWrite(EA, HIGH); // apply +18V to EA to activate Programming-Mode
+  for(int i = 0; i < 1024; i++){
+    // Setup the pins as outputs
+    pinMode(2, OUTPUT);
+    pinMode(3, OUTPUT);
+    pinMode(4, OUTPUT);
+    pinMode(5, OUTPUT);
+    pinMode(6, OUTPUT);
+    pinMode(7, OUTPUT);
+    pinMode(8, OUTPUT);
+    pinMode(9, OUTPUT);
+    pinMode(10, OUTPUT);
+    pinMode(11, OUTPUT);
+    pinMode(12, OUTPUT);
+    pinMode(13, OUTPUT);
+    pinMode(A0, OUTPUT);
+    pinMode(A1, OUTPUT);
+    pinMode(A2, OUTPUT);
+    pinMode(A3, OUTPUT);
+    Serial.print("Reading Address ");
+    Serial.print(i, HEX);
+    int ADDRESS = i << 2;           // Set the current Address and Left-Shift it 2 bits to the left to account for the left-shift of the connections 
+    HIGHBYTE = highByte(ADDRESS);
+    Serial.print(" HIGHBYTE = ");
+    Serial.print(HIGHBYTE, HEX);
+    LOWBYTE = lowByte(ADDRESS);
+    Serial.print(" LOWBYTE = ");
+    Serial.print(LOWBYTE, HEX);
+    PORTB = HIGHBYTE;
+    PORTD = PORTD & B00000011;
+    PORTD = PORTD | LOWBYTE;
+    delay(10);                         // Wait 1ms to have stable lines
+    digitalWrite(RESET, HIGH);        // Latch the Address into the MCS-48 µC
+    delay(10);                         // Give the µC some time to latch the Address
+    Serial.print("   With Data ");
+    Serial.print(payload[i], HEX);
+    int DATA = payload[i] << 2;       // Load the current Payload-Byte
+    HIGHBYTE = highByte(DATA);        
+    Serial.print(" HIGHBYTE = ");
+    Serial.print(HIGHBYTE, HEX);
+    LOWBYTE = lowByte(DATA);
+    Serial.print(" LOWBYTE = ");
+    Serial.print(LOWBYTE, HEX);
+    PORTB = B00000000;
+    PORTD = PORTD & B00000011;
+    pinMode(2, INPUT_PULLUP);
+    pinMode(3, INPUT_PULLUP);
+    pinMode(4, INPUT_PULLUP);
+    pinMode(5, INPUT_PULLUP);
+    pinMode(6, INPUT_PULLUP);
+    pinMode(7, INPUT_PULLUP);
+    pinMode(8, INPUT_PULLUP);
+    pinMode(9, INPUT_PULLUP);
+//    PORTB = B000000;
+//    PORTD = PORTD & B00000011;
+//    DDRB = B000000;
+//    DDRD = DDRD | B00000000;
+    digitalWrite(TEST0, HIGH);
+    delay(25);
+    byte VERIFYL = PIND >> 2;
+    Serial.print(" LOWBYTE: ");
+    Serial.print(VERIFYL, HEX);
+    byte VERIFYH = PINB;
+    Serial.print(" HIGHBYTE: ");
+    Serial.print(VERIFYH, HEX);
+    int VERIFY = (PINB << 2) | PIND;
+    Serial.print(" VERIFY: ");
+    Serial.print(VERIFY, HEX);
+    if (VERIFYL == LOWBYTE >> 2 && VERIFYH == HIGHBYTE){
+      Serial.println(" OK");
+      digitalWrite(LED, HIGH);
+    }
+    else{
+      Serial.println(" ERROR");
+      // error();
+        }
+   digitalWrite(TEST0, LOW);
+   digitalWrite(RESET, LOW);
+
+  }
+     digitalWrite(EA, LOW);
+}
